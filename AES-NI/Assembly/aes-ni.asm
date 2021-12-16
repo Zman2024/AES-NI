@@ -3,7 +3,10 @@
 
 DLL64
 
-; define data here ig kekw
+; #region Macros
+
+%define movv movdqu
+%define vmovv vmovdqu
 
 %macro enter 1 
 	push rbp
@@ -39,58 +42,52 @@ RCON13: equ 0xAB
 RCON14: equ 0x4D
 RCON15: equ 0x9A
 
+; Reference from: https://github.com/intel/isa-l_crypto/blob/42daf271be419de78be0c33085aa61e331c15ca1/aes/keyexp_256.asm#L39
 
+; Uses the f() function of the aeskeygenassist result
+; %1: key0
+; %2: temp
+; @xmm15: zeros
+%macro KeyExpansion0 2
+    pshufd	%2, %2, 0b11111111
+    shufps	xmm15, %1, 0b00010000
+    pxor	%1, xmm15
+    shufps	xmm15, %1, 0b10001100
+    pxor	%1, xmm15
+	pxor	%1, %2
+%endmacro
 
-
-; #region reference from: https://github.com/intel/isa-l_crypto/blob/42daf271be419de78be0c33085aa61e331c15ca1/aes/keyexp_256.asm#L39
-
-	; Uses the f() function of the aeskeygenassist result
-	; %1: key0
-	; %2: temp
-	; @xmm15: zeros
-	%macro KeyExpansion0 2
-	    pshufd	%2, %2, 0b11111111
-	    shufps	xmm15, %1, 0b00010000
-	    pxor	%1, xmm15
-	    shufps	xmm15, %1, 0b10001100
-	    pxor	%1, xmm15
-		pxor	%1, %2
-	%endmacro
-	
-	; Uses the SubWord function of the aeskeygenassist result
-	; %1: key1
-	; %2: temp
-	; @xmm15: zeros
-	%macro KeyExpansion1 2
-	    pshufd	%2, %2, 0b10101010
-	    shufps	xmm15, %1, 0b00010000
-	    pxor	%1, xmm15
-	    shufps	xmm15, %1, 0b10001100
-	    pxor	%1, xmm15
-		pxor	%1, %2
-	%endmacro
+; Uses the SubWord function of the aeskeygenassist result
+; %1: key1
+; %2: temp
+; @xmm15: zeros
+%macro KeyExpansion1 2
+    pshufd	%2, %2, 0b10101010
+    shufps	xmm15, %1, 0b00010000
+    pxor	%1, xmm15
+    shufps	xmm15, %1, 0b10001100
+    pxor	%1, xmm15
+	pxor	%1, %2
+%endmacro
 
 ; #endregion
-
-%define movv movdqu
-%define vmovv vmovdqu
 
 START
 mov rax, 1
 	ret
 
-Decrypt:
-	mov rax, 69
-ret
+; #region Expand Key
 
-; #region ExpandKeyENC_SSE
-; @rcx: ptr to key (256 bit)
-; @rdx: ptr to rkeys buffer (128*15 bits)
 %define KEY rcx
 %define rKeys rdx
 %define KEY_0 xmm0
 %define KEY_1 xmm1
 %define temp xmm10
+%define keyimc xmm2
+
+; #region ExpandKeyENC_SSE
+; @rcx: ptr to key (256 bit)
+; @rdx: ptr to rkeys buffer (128*15 bits)
 ExpandKeyENC_SSE:
 	push rKeys
 
@@ -290,26 +287,261 @@ ExpandKeyENC_AVX:
 
 	pop rKeys
 ret
-%undef temp
-%undef rKeys
+
+; #endregion
+
+; #region ExpandKeyDEC_SSE
+
+; @rcx: ptr to key (256 bit)
+; @rdx: ptr to rkeys buffer (128*15 bits)
+ExpandKeyDEC_SSE:
+
+	lea KEY, [KEY]
+	lea rKeys, [rKeys]
+
+	; Load key
+	movv KEY_0, [KEY]
+	movv KEY_1, [KEY+16]
+	movv [rKeys+16*14], KEY_0
+	aesimc keyimc, KEY_1
+	movv [rKeys+16*13], keyimc
+	
+	; zero xmm15 for key_expansion
+	pxor xmm15, xmm15
+
+	; keygen shit yes.
+
+	; Round Key [2]
+	add rKeys, 16*12
+	aeskeygenassist temp, KEY_1, RCON1
+	KeyExpansion0 KEY_0, temp
+	aesimc keyimc, KEY_0
+	movv [rKeys], keyimc
+
+	; Round Key [3]
+	sub rKeys, 0x10
+	aeskeygenassist temp, KEY_0, RCON1
+	KeyExpansion1 KEY_1, temp
+	aesimc keyimc, KEY_1
+	movv [rKeys], keyimc
+
+	; Round Key [4]
+	sub rKeys, 0x10
+	aeskeygenassist temp, KEY_1, RCON2
+	KeyExpansion0 KEY_0, temp
+	aesimc keyimc, KEY_0
+	movv [rKeys], keyimc
+
+	; Round Key [5]
+	sub rKeys, 0x10
+	aeskeygenassist temp, KEY_0, RCON2
+	KeyExpansion1 KEY_1, temp
+	aesimc keyimc, KEY_1
+	movv [rKeys], keyimc
+
+	; Round Key [6]
+	sub rKeys, 0x10
+	aeskeygenassist temp, KEY_1, RCON3
+	KeyExpansion0 KEY_0, temp
+	aesimc keyimc, KEY_0
+	movv [rKeys], keyimc
+
+	; Round Key [7]
+	sub rKeys, 0x10
+	aeskeygenassist temp, KEY_0, RCON3
+	KeyExpansion1 KEY_1, temp
+	aesimc keyimc, KEY_1
+	movv [rKeys], keyimc
+
+	; Round Key [8]
+	sub rKeys, 0x10
+	aeskeygenassist temp, KEY_1, RCON4
+	KeyExpansion0 KEY_0, temp
+	aesimc keyimc, KEY_0
+	movv [rKeys], keyimc
+
+	; Round Key [9]
+	sub rKeys, 0x10
+	aeskeygenassist temp, KEY_0, RCON4
+	KeyExpansion1 KEY_1, temp
+	aesimc keyimc, KEY_1
+	movv [rKeys], keyimc
+
+	; Round Key [10]
+	sub rKeys, 0x10
+	aeskeygenassist temp, KEY_1, RCON5
+	KeyExpansion0 KEY_0, temp
+	aesimc keyimc, KEY_0
+	movv [rKeys], keyimc
+
+	; Round Key [11]
+	sub rKeys, 0x10
+	aeskeygenassist temp, KEY_0, RCON5
+	KeyExpansion1 KEY_1, temp
+	aesimc keyimc, KEY_1
+	movv [rKeys], keyimc
+
+	; Round Key [12]
+	add rKeys, 0x10
+	aeskeygenassist temp, KEY_1, RCON6
+	KeyExpansion0 KEY_0, temp
+	aesimc keyimc, KEY_0
+	movv [rKeys], keyimc
+
+	; Round Key [13]
+	sub rKeys, 0x10
+	aeskeygenassist temp, KEY_0, RCON6
+	KeyExpansion1 KEY_1, temp
+	aesimc keyimc, KEY_1
+	movv [rKeys], keyimc
+
+	; Round Key [14]
+	sub rKeys, 0x10
+	aeskeygenassist temp, KEY_1, RCON7
+	KeyExpansion0 KEY_0, temp
+	movv [rKeys], KEY_0
+ret
+
+; #endregion
+
+; #region ExpandKeyDEC_AVX
+
+; @rcx: ptr to key (256 bit)
+; @rdx: ptr to rkeys buffer (128*15 bits)
+ExpandKeyDEC_AVX:
+
+	lea KEY, [KEY]
+	lea rKeys, [rKeys]
+
+	; Load key
+	movv KEY_0, [KEY]
+	movv KEY_1, [KEY+16]
+	movv [rKeys+16*14], KEY_0
+	aesimc keyimc, KEY_1
+	movv [rKeys+16*13], keyimc
+	
+	; zero xmm15 for key_expansion
+	pxor xmm15, xmm15
+
+	; keygen shit yes.
+
+	; Round Key [2]
+	add rKeys, 16*12
+	aeskeygenassist temp, KEY_1, RCON1
+	KeyExpansion0 KEY_0, temp
+	aesimc keyimc, KEY_0
+	movv [rKeys], keyimc
+
+	; Round Key [3]
+	sub rKeys, 0x10
+	aeskeygenassist temp, KEY_0, RCON1
+	KeyExpansion1 KEY_1, temp
+	aesimc keyimc, KEY_1
+	movv [rKeys], keyimc
+
+	; Round Key [4]
+	sub rKeys, 0x10
+	aeskeygenassist temp, KEY_1, RCON2
+	KeyExpansion0 KEY_0, temp
+	aesimc keyimc, KEY_0
+	movv [rKeys], keyimc
+
+	; Round Key [5]
+	sub rKeys, 0x10
+	aeskeygenassist temp, KEY_0, RCON2
+	KeyExpansion1 KEY_1, temp
+	aesimc keyimc, KEY_1
+	movv [rKeys], keyimc
+
+	; Round Key [6]
+	sub rKeys, 0x10
+	aeskeygenassist temp, KEY_1, RCON3
+	KeyExpansion0 KEY_0, temp
+	aesimc keyimc, KEY_0
+	movv [rKeys], keyimc
+
+	; Round Key [7]
+	sub rKeys, 0x10
+	aeskeygenassist temp, KEY_0, RCON3
+	KeyExpansion1 KEY_1, temp
+	aesimc keyimc, KEY_1
+	movv [rKeys], keyimc
+
+	; Round Key [8]
+	sub rKeys, 0x10
+	aeskeygenassist temp, KEY_1, RCON4
+	KeyExpansion0 KEY_0, temp
+	aesimc keyimc, KEY_0
+	movv [rKeys], keyimc
+
+	; Round Key [9]
+	sub rKeys, 0x10
+	aeskeygenassist temp, KEY_0, RCON4
+	KeyExpansion1 KEY_1, temp
+	aesimc keyimc, KEY_1
+	movv [rKeys], keyimc
+
+	; Round Key [10]
+	sub rKeys, 0x10
+	aeskeygenassist temp, KEY_1, RCON5
+	KeyExpansion0 KEY_0, temp
+	aesimc keyimc, KEY_0
+	movv [rKeys], keyimc
+
+	; Round Key [11]
+	sub rKeys, 0x10
+	aeskeygenassist temp, KEY_0, RCON5
+	KeyExpansion1 KEY_1, temp
+	aesimc keyimc, KEY_1
+	movv [rKeys], keyimc
+
+	; Round Key [12]
+	add rKeys, 0x10
+	aeskeygenassist temp, KEY_1, RCON6
+	KeyExpansion0 KEY_0, temp
+	aesimc keyimc, KEY_0
+	movv [rKeys], keyimc
+
+	; Round Key [13]
+	sub rKeys, 0x10
+	aeskeygenassist temp, KEY_0, RCON6
+	KeyExpansion1 KEY_1, temp
+	aesimc keyimc, KEY_1
+	movv [rKeys], keyimc
+
+	; Round Key [14]
+	sub rKeys, 0x10
+	aeskeygenassist temp, KEY_1, RCON7
+	KeyExpansion0 KEY_0, temp
+	movv [rKeys], KEY_0
+ret
+
+; #endregion
+
 %undef KEY
+%undef rKeys
 %undef KEY_0
 %undef KEY_1
-; #endregion
+%undef temp
+%undef keyimc
+
+; #endregion Expand Key
+
+; #region Encryption
+
+%define plainText rcx
+%define rKeys rdx
+%define output r8
+%define state xmm0
 
 ; #region Encrypt_SSE
 ; @rcx: ptr to plaintext (128 bits)
 ; @rdx: ptr to rKeys (128*15 bits)
 ; @r8: ptr to output (128 bits)
-%define plainText rcx
-%define rKeys rdx
-%define output r8
-%define state xmm0
 Encrypt_SSE:
 	; xmm0: state
 	movv state, [plainText]
 	
-	; get dma
 	lea rKeys, [rKeys]
 	lea output, [output]
 
@@ -351,7 +583,8 @@ Encrypt_SSE:
 	; store result [r8]
 	movv [output], state
 ret
-; #endregion
+
+; #endregion Encrypt_SSE
 
 ; #region Encrypt_AVX
 ; @rcx: ptr to plaintext (128 bits)
@@ -367,7 +600,7 @@ Encrypt_AVX:
 	vmovv state, [plainText]
 	
 	; round 0 / whitening with k1
-	vpxor state, state, [rKeys+16*0]
+	vpxor state, state, [rKeys]
 
 	; mov [xmm1:xmm14], rKeys
 	;movv xmm1, [rKeys+16*1]
@@ -404,18 +637,27 @@ Encrypt_AVX:
 	; store result [r8]
 	vmovv [output], state
 ret
+; #endregion Encrypt_AVX
 
 %undef plainText
 %undef rKeys
 %undef output
 %undef state
-; #endregion
+
+; #endregion Encryption
+
+; #region Decryption (TODO)
+
+
+
+; #endregion Decryption
 
 ; NOTE: THESE MUST BE IN ALPHABETICAL ORDER! (caps first, then lowercase) eg: FUNC Banana, FUNC apple
 EXPORT
-	FUNC Decrypt
 	FUNC Encrypt_AVX
 	FUNC Encrypt_SSE
+	FUNC ExpandKeyDEC_AVX
+	FUNC ExpandKeyDEC_SSE
 	FUNC ExpandKeyENC_AVX
 	FUNC ExpandKeyENC_SSE
 ENDEXPORT

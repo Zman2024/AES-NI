@@ -5,9 +5,9 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
+using System.Diagnostics;
 using static System.Console;
 using static AES_NI.msvcrt;
-using System.Diagnostics;
 
 namespace AES_NI
 {
@@ -203,7 +203,6 @@ namespace AES_NI
             // Returns the number of seconds per GB of data
             public static double PerformSpeedTestSSE()
             {
-
                 byte* buffer = (byte*)malloc(PerformanceAllocationSize);
                 byte* rKeys = (byte*)malloc(RoundKeyBufferSize);
 
@@ -225,7 +224,6 @@ namespace AES_NI
             // Returns the number of seconds per GB of data
             public static double PerformSpeedTestAVX()
             {
-
                 byte* buffer = (byte*)malloc(PerformanceAllocationSize);
                 byte* rKeys = (byte*)malloc(RoundKeyBufferSize);
 
@@ -245,8 +243,6 @@ namespace AES_NI
             }
 
         }
-
-        public static byte[] RCON = { 0x8D, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1B, 0x36, 0x6C, 0xD8, 0xAB, 0x4D, 0x9A };
 
         static double TestSSE(uint nRounds)
         {
