@@ -7,7 +7,7 @@ using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
 using System.Diagnostics;
 using static System.Console;
-using static AES_NI.msvcrt;
+using static global::msvcrt;
 
 namespace AES_NI
 {
