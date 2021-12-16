@@ -173,15 +173,23 @@ namespace AES_NI
                 V256 Key = TestKey;
                 V128* rKeys = (V128*)calloc(1, RoundKeyBufferSize);
                 V128 Plaintext = TestPlaintext;
-                V128 ExpectedResult = TestExpectedOutput;
                 V128 resultBuffer = new V128();
 
-                libaes.ExpandKeyENC_SSE(&Key, rKeys);
-                libaes.EncryptSSE(&Plaintext, rKeys, &resultBuffer);
+                libaes.SSE.ExpandKey(&Key, rKeys, true);
+                libaes.SSE.Encrypt(&Plaintext, rKeys, &resultBuffer);
+
+                if (resultBuffer != TestExpectedOutput)
+                {
+                    free(rKeys);
+                    return false;
+                }
+
+                libaes.SSE.ExpandKey(&Key, rKeys, false);
+                libaes.SSE.Decrypt(&resultBuffer, rKeys, &resultBuffer);
 
                 free(rKeys);
 
-                return resultBuffer == ExpectedResult;
+                return resultBuffer == TestPlaintext;
             }
 
             public static bool PerformIntegrityTestAVX()
@@ -189,15 +197,23 @@ namespace AES_NI
                 V256 Key = TestKey;
                 V128* rKeys = (V128*)calloc(1, RoundKeyBufferSize);
                 V128 Plaintext = TestPlaintext;
-                V128 ExpectedResult = TestExpectedOutput;
                 V128 resultBuffer = new V128();
 
-                libaes.ExpandKeyENC_AVX(&Key, rKeys);
-                libaes.EncryptAVX(&Plaintext, rKeys, &resultBuffer);
+                libaes.AVX.ExpandKey(&Key, rKeys, true);
+                libaes.AVX.Encrypt(&Plaintext, rKeys, &resultBuffer);
+
+                if (resultBuffer != TestExpectedOutput)
+                {
+                    free(rKeys);
+                    return false;
+                }
+
+                libaes.AVX.ExpandKey(&Key, rKeys, false);
+                libaes.AVX.Decrypt(&resultBuffer, rKeys, &resultBuffer);
 
                 free(rKeys);
 
-                return resultBuffer == ExpectedResult;
+                return resultBuffer == TestPlaintext;
             }
 
             // Returns the number of seconds per GB of data
@@ -210,7 +226,7 @@ namespace AES_NI
                 var sw = Stopwatch.StartNew();
                 while (x < PerformanceAllocationSize)
                 {
-                    libaes.EncryptSSE(buffer + x, rKeys, buffer + x);
+                    libaes.SSE.Encrypt(buffer + x, rKeys, buffer + x);
                     x += 0x10;
                 }
                 sw.Stop();
@@ -231,7 +247,7 @@ namespace AES_NI
                 var sw = Stopwatch.StartNew();
                 while (x < PerformanceAllocationSize)
                 {
-                    libaes.EncryptAVX(buffer + x, rKeys, buffer + x);
+                    libaes.AVX.Encrypt(buffer + x, rKeys, buffer + x);
                     x += 0x10;
                 }
                 sw.Stop();

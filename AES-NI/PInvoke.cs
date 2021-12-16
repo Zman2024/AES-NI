@@ -11,23 +11,39 @@ namespace AES_NI
     {
         const string LibName = "libaes.dll";
 
-        [DllImport(LibName)]
-        public static extern void* ExpandKeyENC_SSE(void* key, void* @out);
+        public static unsafe class AVX
+        {
+            [DllImport(LibName, EntryPoint = "Decrypt_AVX")]
+            public static extern void Decrypt(void* ciphertext, void* rKeys, void* @out);
 
-        [DllImport(LibName)]
-        public static extern void* ExpandKeyENC_AVX(void* key, void* @out);
+            [DllImport(LibName, EntryPoint = "Encrypt_AVX")]
+            public static extern void Encrypt(void* plaintext, void* rKeys, void* @out);
 
-        [DllImport(LibName)]
-        public static extern void* ExpandKeyDEC(void* key, void* @out);
+            public static void* ExpandKey(void* key, void* @out, bool encrypting) => encrypting ? ExpandKeyENC(key, @out) : ExpandKeyDEC(key, @out);
 
-        [DllImport(LibName)]
-        public static extern void EncryptSSE(void* plaintext, void* rKeys, void* @out);
+            [DllImport(LibName, EntryPoint = "ExpandKeyENC_AVX")]
+            public static extern void* ExpandKeyENC(void* key, void* @out);
 
-        [DllImport(LibName)]
-        public static extern void EncryptAVX(void* plaintext, void* rKeys, void* @out);
+            [DllImport(LibName, EntryPoint = "ExpandKeyDEC_AVX")]
+            public static extern void* ExpandKeyDEC(void* key, void* @out);
+        }
 
-        [DllImport(LibName)]
-        public static extern void Decrypt(void* cipertext, void* rKeys, void* @out);
+        public static unsafe class SSE
+        {
+            [DllImport(LibName, EntryPoint = "Decrypt_SSE")]
+            public static extern void Decrypt(void* ciphertext, void* rKeys, void* @out);
+
+            [DllImport(LibName, EntryPoint = "Encrypt_SSE")]
+            public static extern void Encrypt(void* plaintext, void* rKeys, void* @out);
+
+            public static void* ExpandKey(void* key, void* @out, bool encrypting) => encrypting ? ExpandKeyENC(key, @out) : ExpandKeyDEC(key, @out);
+
+            [DllImport(LibName, EntryPoint = "ExpandKeyENC_SSE")]
+            public static extern void* ExpandKeyENC(void* key, void* @out);
+
+            [DllImport(LibName, EntryPoint = "ExpandKeyDEC_SSE")]
+            public static extern void* ExpandKeyDEC(void* key, void* @out);
+        }
     }
 
     // yes, im using malloc/free in C#. what of it?
